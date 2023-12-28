@@ -6,10 +6,18 @@ from torch.nn.utils.rnn import pad_sequence
 from collections import defaultdict
 import tqdm
 import random
+import os
+import json
+from itertools import combinations
+from easydict import EasyDict
 from bs4 import BeautifulSoup, NavigableString
 import numpy as np
 from typing import Dict, List, Optional, Iterator, Callable, Union, Tuple
 
+SYS_INDICATOR = '<|im_start|><|system|>'
+USER_INDICATOR = '<|im_start|><|user|>'
+BOT_INDICATOR = '<|im_start|><|assistant|>'
+EOS = '<|im_end|>'
 
 def extract_anthropic_prompt(prompt_and_response):
     """Extract the anthropic prompt from a prompt and response pair."""
@@ -18,6 +26,20 @@ def extract_anthropic_prompt(prompt_and_response):
     assert search_term_idx != -1, f"Prompt and response does not contain '{search_term}'"
     return prompt_and_response[:search_term_idx + len(search_term)]
 
+def chatml_prompt(prompts, system=None):
+    s = ""
+    if system:
+        s += SYS_INDICATOR + system + EOS
+    
+    assert len(prompts) % 2 == 1, "Length of prompts must be odd number"
+    for i, prompt in enumerate(prompts):
+        if i % 2 == 0:
+            s += USER_INDICATOR + prompt + EOS
+        else:
+            s += BOT_INDICATOR + prompt + EOS
+    s += BOT_INDICATOR
+    
+    return s
 
 def strip_html_tags(html_string):
     """Strip HTML tags from a string, except for <code> tags (which contain real code in the StackExchange answers)."""
@@ -116,6 +138,75 @@ def get_shp(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str
 
     return data
 
+def get_kub(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
+    """Load ko_Ultrafeedback_binarized data. See hh for the format.
+    
+    """
+    print(f'Loading KUB dataset ({split} split) from Huggingface...')
+    dataset = datasets.load_dataset('maywell/ko_Ultrafeedback_binarized', split=split, cache_dir=cache_dir)
+    print('done')
+
+    data = defaultdict(lambda: defaultdict(list))
+    for row in tqdm.tqdm(dataset, desc='Processing KUB', disable=silent):
+        prompt, chosen, rejected = row['prompt'], row['chosen'], row['rejected']
+        prompt = chatml_prompt([prompt], system=None)
+        responses = [chosen, rejected]
+        n_responses = len(data[prompt]['responses'])
+        data[prompt]['pairs'].append((n_responses, n_responses + 1))
+        data[prompt]['responses'].extend(responses)
+        data[prompt]['sft_target'] = chosen
+        
+    return data
+
+def get_sshf(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
+    """Load selectstar HF data. See hh for the format.
+    
+    """
+    print(f'Loading SelectStar HF dataset ({split} split) ...')
+    assert os.path.exists('./dataset/sshf'), 'SelectStar HF dataset is not found'
+    
+    file_list = os.listdir(os.path.join('./dataset/sshf', split))
+    file_list.sort()
+    file_name = file_list[-1] # Latest one
+    with open(os.path.join('./dataset/sshf', split, file_name), 'r') as f:
+        dataset = f.readlines()
+        dataset = [EasyDict(json.loads(dataset)) for dataset in dataset]
+    print('done')
+
+    data = defaultdict(lambda: defaultdict(list))
+    for row in tqdm.tqdm(dataset, desc='Processing SSHF', disable=silent):
+        task_name = row.meta.task_name
+        if "셀렉트_" in task_name:
+            system = None
+            prompts = []
+            for talk in row.talks:
+                if 'system' in talk.keys():
+                    system = talk.system
+                else:
+                    prompts += [talk.input]
+                    prompt = chatml_prompt(prompts, system)
+                    for cand1, cand2 in combinations(talk.candidates, 2):
+                        if cand1.rank == cand2.rank:
+                            continue
+                        elif cand1.rank < cand2.rank:
+                            chosen, rejected = cand1.msg, cand2.msg
+                        else:
+                            chosen, rejected = cand2.msg, cand1.msg
+                            
+                        responses = [chosen, rejected]
+                        pairs = (0,1)
+                        
+                        # data save
+                        data[prompt]['pairs'].append(pairs)
+                        data[prompt]['responses'].extend(responses)
+                        data[prompt]['sft_target'] = chosen
+                        
+                    for cand in talk.candidates:
+                        if cand.is_selected:
+                            prompts.append(cand.msg)
+                            break
+        
+    return data
 
 def get_hh(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
     """Load the Anthropic Helpful-Harmless dataset from Huggingface and convert it to the necessary format.
@@ -162,14 +253,19 @@ def get_hh(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str,
 
 def get_dataset(name: str, split: str, silent: bool = False, cache_dir: str = None):
     """Load the given dataset by name. Supported by default are 'shp', 'hh', and 'se'."""
-    if name == 'shp':
-        data = get_shp(split, silent=silent, cache_dir=cache_dir)
-    elif name == 'hh':
-        data = get_hh(split, silent=silent, cache_dir=cache_dir)
-    elif name == 'se':
-        data = get_se(split, silent=silent, cache_dir=cache_dir)
-    else:
-        raise ValueError(f"Unknown dataset '{name}'")
+    data = defaultdict(lambda: defaultdict(list))
+    if 'shp' == name:
+        data.update(get_shp(split, silent=silent, cache_dir=os.path.join(cache_dir, 'shp')))
+    if 'hh' == name:
+        data.update(get_hh(split, silent=silent, cache_dir=os.path.join(cache_dir, 'hh')))
+    if 'se' == name:
+        data.update(get_se(split, silent=silent, cache_dir=os.path.join(cache_dir, 'se')))
+    if 'kub' == name:
+        data.update(get_kub(split, silent=silent, cache_dir=os.path.join(cache_dir, 'kub')))
+    if 'sshf' == name:
+        data.update(get_sshf(split, silent=silent, cache_dir=os.path.join(cache_dir, 'sshf')))
+    
+    assert len(data), "dataset is empty, Maybe unknown dataset"
 
     assert set(list(data.values())[0].keys()) == {'responses', 'pairs', 'sft_target'}, \
         f"Unexpected keys in dataset: {list(list(data.values())[0].keys())}"
