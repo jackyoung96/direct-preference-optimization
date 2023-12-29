@@ -145,6 +145,10 @@ def get_kub(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str
     print(f'Loading KUB dataset ({split} split) from Huggingface...')
     dataset = datasets.load_dataset('maywell/ko_Ultrafeedback_binarized', split=split, cache_dir=cache_dir)
     print('done')
+    
+    dataset = dataset.shuffle(seed=42)
+    dataset = dataset.select(range(int(len(dataset) * 0.01))) if split == 'test' else dataset.select(
+        range(int(len(dataset) * 0.01), len(dataset)))
 
     data = defaultdict(lambda: defaultdict(list))
     for row in tqdm.tqdm(dataset, desc='Processing KUB', disable=silent):
@@ -172,6 +176,11 @@ def get_sshf(split: str, silent: bool = False, cache_dir: str = None) -> Dict[st
         dataset = f.readlines()
         dataset = [EasyDict(json.loads(dataset)) for dataset in dataset]
     print('done')
+    
+    # train, eval split
+    dataset = dataset.shuffle(seed=42)
+    dataset = dataset.select(range(int(len(dataset) * 0.01))) if split == 'test' else dataset.select(
+        range(int(len(dataset) * 0.01), len(dataset)))
 
     data = defaultdict(lambda: defaultdict(list))
     for row in tqdm.tqdm(dataset, desc='Processing SSHF', disable=silent):
