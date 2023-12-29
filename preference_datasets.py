@@ -14,9 +14,12 @@ from bs4 import BeautifulSoup, NavigableString
 import numpy as np
 from typing import Dict, List, Optional, Iterator, Callable, Union, Tuple
 
-SYS_INDICATOR = '<|im_start|><|system|>'
-USER_INDICATOR = '<|im_start|><|user|>'
-BOT_INDICATOR = '<|im_start|><|assistant|>'
+# SYS_INDICATOR = '<|im_start|><|system|>'
+# USER_INDICATOR = '<|im_start|><|user|>'
+# BOT_INDICATOR = '<|im_start|><|assistant|>'
+SYS_INDICATOR = '<|im_start|>system\n'
+USER_INDICATOR = '<|im_start|>user\n'
+BOT_INDICATOR = '<|im_start|>assistant\n'
 EOS = '<|im_end|>'
 
 def extract_anthropic_prompt(prompt_and_response):
@@ -331,7 +334,7 @@ def tokenize_batch_element(prompt: str, chosen: str, rejected: str, truncation_m
     rejected_tokens = tokenizer(rejected, add_special_tokens=False)
     prompt_tokens = tokenizer(prompt, add_special_tokens=False)
 
-    assert tokenizer.eos_token_id not in prompt_tokens['input_ids'], f"Prompt contains EOS token: {prompt}"
+    # assert tokenizer.eos_token_id not in prompt_tokens['input_ids'], f"Prompt contains EOS token: {prompt}"
     assert tokenizer.eos_token_id not in chosen_tokens['input_ids'], f"Chosen response contains EOS token: {chosen}"
     assert tokenizer.eos_token_id not in rejected_tokens['input_ids'], f"Rejected response contains EOS token: {rejected}"
 
