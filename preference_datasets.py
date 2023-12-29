@@ -143,7 +143,7 @@ def get_kub(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str
     
     """
     print(f'Loading KUB dataset ({split} split) from Huggingface...')
-    dataset = datasets.load_dataset('maywell/ko_Ultrafeedback_binarized', split=split, cache_dir=cache_dir)
+    dataset = datasets.load_dataset('maywell/ko_Ultrafeedback_binarized', cache_dir=cache_dir)['train']
     print('done')
     
     dataset = dataset.shuffle(seed=42)
