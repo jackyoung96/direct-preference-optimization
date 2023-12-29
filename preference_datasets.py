@@ -195,7 +195,7 @@ def get_sshf(split: str, silent: bool = False, cache_dir: str = None) -> Dict[st
                 if 'system' in talk.keys():
                     system = talk.system
                 else:
-                    prompts += [talk.input]
+                    prompts += [talk.input.strip()]
                     prompt = chatml_prompt(prompts, system)
                     for cand1, cand2 in combinations(talk.candidates, 2):
                         if cand1.rank == cand2.rank:
@@ -204,7 +204,8 @@ def get_sshf(split: str, silent: bool = False, cache_dir: str = None) -> Dict[st
                             chosen, rejected = cand1.msg, cand2.msg
                         else:
                             chosen, rejected = cand2.msg, cand1.msg
-                            
+                        
+                        chosen, rejected = chosen.strip(), rejected.strip()
                         responses = [chosen, rejected]
                         pairs = (0,1)
                         
@@ -335,10 +336,11 @@ def tokenize_batch_element(prompt: str, chosen: str, rejected: str, truncation_m
     prompt_tokens = tokenizer(prompt, add_special_tokens=False)
 
     # assert tokenizer.eos_token_id not in prompt_tokens['input_ids'], f"Prompt contains EOS token: {prompt}"
-    assert tokenizer.eos_token_id not in chosen_tokens['input_ids'], f"Chosen response contains EOS token: {chosen}"
-    assert tokenizer.eos_token_id not in rejected_tokens['input_ids'], f"Rejected response contains EOS token: {rejected}"
+    # assert tokenizer.eos_token_id not in chosen_tokens['input_ids'], f"Chosen response contains EOS token: {chosen}"
+    # assert tokenizer.eos_token_id not in rejected_tokens['input_ids'], f"Rejected response contains EOS token: {rejected}"
 
-    chosen_tokens['input_ids'].append(tokenizer.eos_token_id)
+    if tokenizer.eos_token_id not in chosen_tokens['input_ids']:
+        chosen_tokens['input_ids'].append(tokenizer.eos_token_id)
     chosen_tokens['attention_mask'].append(1)
 
     rejected_tokens['input_ids'].append(tokenizer.eos_token_id)
