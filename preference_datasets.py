@@ -172,7 +172,7 @@ def get_sshf(split: str, silent: bool = False, cache_dir: str = None) -> Dict[st
     file_list = os.listdir('./dataset/sshf')
     file_list.sort()
     file_name = file_list[-1] # Latest one
-    with open(os.path.join('./dataset/sshf', split, file_name), 'r') as f:
+    with open(os.path.join('./dataset/sshf', file_name), 'r') as f:
         dataset = f.readlines()
         dataset = [EasyDict(json.loads(dataset)) for dataset in dataset]
     print('done')
